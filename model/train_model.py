@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import pickle
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -14,6 +15,10 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 
 from data_utils import load_dataset, split_features_target
+
+
+PROJECT_NAME = "Enterprise Network Intrusion Detection ML System"
+MODEL_VERSION = "nids-ml-v1"
 
 
 def build_models(random_state: int) -> dict[str, Pipeline]:
@@ -100,7 +105,8 @@ def main() -> None:
     )
     print(f"Final dataset shape: {data.shape}")
     print("Class distribution:")
-    print(data["Label"].value_counts())
+    class_distribution = data["Label"].value_counts().to_dict()
+    print(pd.Series(class_distribution))
 
     x, y_text = split_features_target(data)
     label_encoder = LabelEncoder()
@@ -144,16 +150,35 @@ def main() -> None:
         "label_encoder": label_encoder,
         "feature_columns": list(x.columns),
         "labels": labels,
+        "metadata": {
+            "project_name": PROJECT_NAME,
+            "model_version": MODEL_VERSION,
+            "trained_at_utc": datetime.now(timezone.utc).isoformat(),
+            "data_source": str(args.data),
+            "max_rows_per_file": args.max_rows_per_file,
+            "include_merged": args.include_merged,
+            "test_size": args.test_size,
+            "random_state": args.random_state,
+            "feature_count": len(x.columns),
+            "training_rows": int(len(data)),
+            "class_distribution": class_distribution,
+            "best_model_name": best_name,
+            "best_accuracy": best_score,
+        },
     }
     best_model_path = output_dir / "best_nids_model.pkl"
     with best_model_path.open("wb") as file:
         pickle.dump(model_package, file)
+
+    metadata_path = output_dir / "training_metadata.json"
+    metadata_path.write_text(json.dumps(model_package["metadata"], indent=2), encoding="utf-8")
 
     pd.DataFrame(results).sort_values("accuracy", ascending=False).to_csv(
         output_dir / "model_comparison.csv", index=False
     )
     print(f"\nBest model: {best_name} ({best_score:.4f})")
     print(f"Saved: {best_model_path}")
+    print(f"Metadata: {metadata_path}")
 
 
 if __name__ == "__main__":

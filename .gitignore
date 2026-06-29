@@ -4,6 +4,8 @@ __pycache__/
 
 dataset/
 model/artifacts/
+predictions*.csv
+*.joblib
 
 .ipynb_checkpoints/
 .DS_Store
