@@ -1,0 +1,186 @@
+NIDS Using Machine Learning - Full Project Start Steps
+=====================================================
+
+GitHub Project Link
+-------------------
+Download or clone the project from:
+
+https://github.com/maulikcmr05/NIDS-Using-Machine-Learning
+
+
+Option 1: Download ZIP from GitHub
+----------------------------------
+1. Open the GitHub link above in your browser.
+2. Click the green "Code" button.
+3. Click "Download ZIP".
+4. Extract the ZIP file.
+5. Open the extracted folder in VS Code or File Explorer.
+
+
+Option 2: Clone using Git
+-------------------------
+Open PowerShell and run:
+
+git clone https://github.com/maulikcmr05/NIDS-Using-Machine-Learning.git
+cd NIDS-Using-Machine-Learning
+
+
+Important Dataset Note
+----------------------
+The dataset files are NOT uploaded to GitHub because they are very large.
+
+After downloading the project, create this folder:
+
+dataset
+
+Then put your CSV files inside it, for example:
+
+dataset/Friday11.csv
+dataset/Friday21.csv
+dataset/Friday31.csv
+dataset/Monday1.csv
+dataset/Tuesday1.csv
+dataset/Wednesday1.csv
+dataset/Thursday11.csv
+dataset/Thursday21.csv
+
+Merged.csv is optional. The training script skips Merged.csv by default when other CSV files are present.
+
+
+Required Software
+-----------------
+Install these before starting:
+
+1. Python 3.10 or newer
+2. Git, if you want to clone the project
+3. VS Code, optional but recommended
+
+Check Python:
+
+python --version
+
+
+Create Python Virtual Environment
+---------------------------------
+Open PowerShell inside the project folder and run:
+
+python -m venv .venv
+
+Activate the virtual environment:
+
+.\.venv\Scripts\Activate.ps1
+
+If activation is blocked, run:
+
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+
+Then activate again:
+
+.\.venv\Scripts\Activate.ps1
+
+
+Install Required Libraries
+--------------------------
+Run:
+
+pip install -r requirements.txt
+
+
+Train the Machine Learning Model
+--------------------------------
+Fast training:
+
+python model\train_model.py --data dataset --max-rows-per-file 50000
+
+Better accuracy, but slower:
+
+python model\train_model.py --data dataset --max-rows-per-file 150000
+
+Full dataset training, only if your laptop has enough RAM:
+
+python model\train_model.py --data dataset --max-rows-per-file 0
+
+Include Merged.csv also:
+
+python model\train_model.py --data dataset --max-rows-per-file 50000 --include-merged
+
+
+Training Output
+---------------
+After training, files are saved in:
+
+model\artifacts
+
+Important output file:
+
+model\artifacts\best_nids_model.pkl
+
+Other output files:
+
+model\artifacts\random_forest.pkl
+model\artifacts\extra_trees.pkl
+model\artifacts\logistic_regression.pkl
+model\artifacts\model_comparison.csv
+model\artifacts\*_metrics.json
+
+
+Run Prediction from Command Line
+--------------------------------
+Example:
+
+python model\predict.py --input dataset\Friday11.csv --output predictions.csv
+
+The output file will contain a new column:
+
+Predicted_Label
+
+
+Run the Frontend App
+--------------------
+Run:
+
+streamlit run frontend\app.py
+
+Then open the local URL shown in PowerShell.
+Usually it is:
+
+http://localhost:8501
+
+Upload a CSV file in the frontend and download the prediction result.
+
+
+Recommended Project Workflow
+----------------------------
+1. Download or clone the project from GitHub.
+2. Put CSV dataset files inside the dataset folder.
+3. Create and activate the Python virtual environment.
+4. Install libraries using requirements.txt.
+5. Train the model.
+6. Confirm best_nids_model.pkl is created.
+7. Use predict.py or frontend/app.py for predictions.
+
+
+Common Errors and Fixes
+-----------------------
+Error: python is not recognized
+Fix: Install Python and tick "Add Python to PATH" during installation.
+
+Error: cannot activate .venv
+Fix:
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+
+Error: No CSV files found
+Fix: Put dataset CSV files inside the dataset folder.
+
+Error: Model not found
+Fix: Train the model first:
+python model\train_model.py --data dataset --max-rows-per-file 50000
+
+Error: Memory error during training
+Fix: Reduce rows:
+python model\train_model.py --data dataset --max-rows-per-file 20000
+
+
+Final GitHub Link
+-----------------
+https://github.com/maulikcmr05/NIDS-Using-Machine-Learning
