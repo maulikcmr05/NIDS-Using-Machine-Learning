@@ -1,0 +1,7 @@
+.venv/
+nids.db
+uploads/
+results/
+ml_artifacts/best_nids_model.pkl
+__pycache__/
+*.pyc
