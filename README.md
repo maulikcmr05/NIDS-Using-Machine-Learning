@@ -2,7 +2,7 @@
 
 This repository contains a machine learning focused Network Intrusion Detection System (NIDS). It is structured like an enterprise security analytics project for a large organization, but it is not affiliated with any real company.
 
-The project only includes the ML pipeline required to train, evaluate, save, and use intrusion detection models. It does not include a backend API or frontend application.
+The core project is ML-first: train, evaluate, save, and use intrusion detection models. It also includes a professional Streamlit dashboard for ML operations: CSV inspection, PKL model inspection, graphs, training controls, prediction, and custom row scoring. The dashboard works directly with local files and does not require a separate backend API.
 
 ## Objective
 
@@ -20,11 +20,11 @@ Train supervised machine learning models on network-flow CSV data and save the b
 - `.pkl` model artifact generation
 - CLI-based batch prediction
 - Enterprise-style model metadata
+- Professional dashboard for CSV, PKL, graphs, training, prediction, and custom scoring
 
 ## What This Project Does Not Contain
 
 - No backend server
-- No frontend UI
 - No database layer
 - No live network packet capture
 - No generated model artifacts committed to GitHub
@@ -36,6 +36,9 @@ Train supervised machine learning models on network-flow CSV data and save the b
 NIDS-Using-Machine-Learning/
   dataset/                         # Local only, ignored by Git
   docs/                            # Project documentation
+  dashboard/
+    nids_dashboard.py              # Streamlit dashboard for ML operations
+    README.md
   model/
     data_utils.py                  # Data loading, cleaning, feature alignment
     train_model.py                 # ML training and .pkl artifact creation
@@ -120,6 +123,26 @@ The output CSV contains:
 ```text
 Predicted_Label
 ```
+
+## Dashboard
+
+The dashboard is an enterprise-style local ML command center.
+
+```powershell
+streamlit run dashboard\nids_dashboard.py
+```
+
+Dashboard features:
+
+- View and profile CSV files
+- Inspect `.pkl` model artifacts
+- View model metadata and feature columns
+- Compare trained models
+- View confusion matrix and classification report
+- Train models on new data
+- Score uploaded CSV files
+- Download prediction output
+- Score one custom row using model features
 
 ## Models Used
 

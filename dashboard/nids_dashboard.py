@@ -1,211 +1,478 @@
-"""
-NIDS Dashboard — companion visualization layer for
-maulikcmr05/NIDS-Using-Machine-Learning
-
-This app does NOT add a backend, live packet capture, or a database.
-It reads the artifacts that the repo's own scripts already produce:
-
-    model/artifacts/training_metadata.json
-    model/artifacts/model_comparison.csv
-    model/artifacts/<model_name>_metrics.json   (per model, incl. confusion matrix)
-    predictions.csv (or any file produced by model/predict.py)
-
-Run it from the repo root after training a model:
-
-    pip install -r requirements.txt
-    pip install streamlit plotly
-    streamlit run dashboard/app.py
-"""
-
 from __future__ import annotations
 
 import json
+import pickle
+import subprocess
+import sys
+from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-st.set_page_config(page_title="NIDS Dashboard", page_icon="🛡️", layout="wide")
 
-ARTIFACTS_DEFAULT = "model/artifacts"
+ROOT = Path(__file__).resolve().parents[1]
+MODEL_DIR = ROOT / "model"
+if str(MODEL_DIR) not in sys.path:
+    sys.path.append(str(MODEL_DIR))
+
+from data_utils import TARGET_COLUMN, align_prediction_columns
+
+
+ARTIFACTS_DEFAULT = ROOT / "model" / "artifacts"
+DATASET_DEFAULT = ROOT / "dataset"
+MODEL_DEFAULT = ARTIFACTS_DEFAULT / "best_nids_model.pkl"
 BENIGN_LABELS = {"benign", "normal", "normal.", "no attack"}
 
 
-# --------------------------------------------------------------------------
-# Loaders — every one fails soft, so a partially-trained project still renders
-# --------------------------------------------------------------------------
+st.set_page_config(
+    page_title="Enterprise NIDS ML Command Center",
+    page_icon=":shield:",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
+
+ENTERPRISE_CSS = """
+<style>
+    .stApp {
+        background: #0b0f17;
+        color: #e5e7eb;
+    }
+    [data-testid="stSidebar"] {
+        background: #111827;
+        border-right: 1px solid #243244;
+    }
+    .block-container {
+        padding-top: 2rem;
+        padding-bottom: 3rem;
+        max-width: 1520px;
+    }
+    h1, h2, h3 {
+        letter-spacing: 0;
+    }
+    .hero {
+        padding: 26px 30px;
+        border: 1px solid #263244;
+        background: linear-gradient(135deg, #101827 0%, #111827 50%, #0f172a 100%);
+        border-radius: 8px;
+        margin-bottom: 18px;
+    }
+    .hero h1 {
+        margin: 0 0 8px 0;
+        font-size: 34px;
+        line-height: 1.15;
+    }
+    .hero p {
+        margin: 0;
+        color: #a7b0c0;
+        font-size: 15px;
+    }
+    .status-card {
+        padding: 16px 18px;
+        border: 1px solid #263244;
+        background: #111827;
+        border-radius: 8px;
+        min-height: 112px;
+    }
+    .status-label {
+        color: #94a3b8;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: .08em;
+        margin-bottom: 8px;
+    }
+    .status-value {
+        color: #f8fafc;
+        font-size: 26px;
+        font-weight: 700;
+        line-height: 1.2;
+    }
+    .status-subtle {
+        color: #94a3b8;
+        font-size: 13px;
+        margin-top: 8px;
+    }
+    .section-note {
+        padding: 12px 14px;
+        border: 1px solid #334155;
+        background: #0f172a;
+        border-radius: 8px;
+        color: #cbd5e1;
+    }
+    div[data-testid="stMetric"] {
+        background: #111827;
+        border: 1px solid #263244;
+        border-radius: 8px;
+        padding: 14px 16px;
+    }
+    div[data-testid="stTabs"] button p {
+        font-size: 15px;
+        font-weight: 600;
+    }
+</style>
+"""
+
+
+st.markdown(ENTERPRISE_CSS, unsafe_allow_html=True)
+
+
+def rel(path: Path) -> str:
+    try:
+        return str(path.resolve().relative_to(ROOT.resolve()))
+    except ValueError:
+        return str(path)
+
+
+def file_size(path: Path) -> str:
+    if not path.exists():
+        return "missing"
+    size = path.stat().st_size
+    for unit in ["B", "KB", "MB", "GB"]:
+        if size < 1024:
+            return f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{size:.1f} TB"
+
+
+def is_attack_label(label: Any) -> bool:
+    return str(label).strip().lower() not in BENIGN_LABELS
+
+
 @st.cache_data(show_spinner=False)
-def load_json(path: Path) -> dict | None:
+def load_json(path_text: str) -> dict[str, Any] | None:
+    path = Path(path_text)
     if not path.exists():
         return None
     return json.loads(path.read_text(encoding="utf-8"))
 
 
 @st.cache_data(show_spinner=False)
-def load_csv(path: Path) -> pd.DataFrame | None:
+def load_csv(path_text: str, nrows: int | None = None) -> pd.DataFrame | None:
+    path = Path(path_text)
     if not path.exists():
         return None
-    return pd.read_csv(path, low_memory=False)
+    return pd.read_csv(path, low_memory=False, nrows=nrows)
 
 
-def discover_metric_files(artifacts_dir: Path) -> dict[str, dict]:
-    """Find every <model_name>_metrics.json in the artifacts folder."""
-    out = {}
-    for f in sorted(artifacts_dir.glob("*_metrics.json")):
-        model_name = f.name.replace("_metrics.json", "")
-        data = load_json(f)
+@st.cache_resource(show_spinner=False)
+def load_pickle_model(path_text: str) -> dict[str, Any] | None:
+    path = Path(path_text)
+    if not path.exists():
+        return None
+    with path.open("rb") as file:
+        package = pickle.load(file)
+    return package
+
+
+def load_uploaded_csv(uploaded_file) -> pd.DataFrame | None:
+    if uploaded_file is None:
+        return None
+    return pd.read_csv(uploaded_file, low_memory=False)
+
+
+def discover_csv_files(folder: Path) -> list[Path]:
+    if not folder.exists():
+        return []
+    return sorted(folder.glob("*.csv"))
+
+
+def discover_pkl_files(folder: Path) -> list[Path]:
+    if not folder.exists():
+        return []
+    return sorted(folder.glob("*.pkl"))
+
+
+def discover_metrics(folder: Path) -> dict[str, dict[str, Any]]:
+    metrics: dict[str, dict[str, Any]] = {}
+    if not folder.exists():
+        return metrics
+    for path in sorted(folder.glob("*_metrics.json")):
+        data = load_json(str(path))
         if data:
-            out[model_name] = data
-    return out
+            metrics[path.name.replace("_metrics.json", "")] = data
+    return metrics
 
 
-def is_attack_label(label: str) -> bool:
-    return str(label).strip().lower() not in BENIGN_LABELS
+def package_summary(package: dict[str, Any] | None) -> dict[str, Any]:
+    if not package:
+        return {}
+    metadata = package.get("metadata", {})
+    return {
+        "model_name": package.get("model_name") or metadata.get("best_model_name") or "unknown",
+        "accuracy": package.get("accuracy") or metadata.get("best_accuracy"),
+        "feature_count": len(package.get("feature_columns", [])) or metadata.get("feature_count"),
+        "labels": package.get("labels", []),
+        "metadata": metadata,
+    }
 
 
-# --------------------------------------------------------------------------
-# Sidebar — point at wherever the artifacts / predictions actually live
-# --------------------------------------------------------------------------
-st.sidebar.title("🛡️ NIDS Dashboard")
-st.sidebar.caption("Reads outputs from train_model.py and predict.py")
+def predict_dataframe(package: dict[str, Any], raw: pd.DataFrame) -> pd.DataFrame:
+    model = package["model"]
+    label_encoder = package["label_encoder"]
+    feature_columns = package["feature_columns"]
+    aligned = align_prediction_columns(raw, feature_columns)
+    encoded = model.predict(aligned)
+    predictions = label_encoder.inverse_transform(encoded)
+    result = raw.copy()
+    result["Predicted_Label"] = predictions
+    result["Traffic_Type"] = result["Predicted_Label"].apply(
+        lambda value: "Attack" if is_attack_label(value) else "Benign"
+    )
+    return result
 
-artifacts_dir = Path(st.sidebar.text_input("Artifacts folder", ARTIFACTS_DEFAULT))
-predictions_path = Path(
-    st.sidebar.text_input("Predictions CSV (from predict.py)", "predictions.csv")
-)
-uploaded_predictions = st.sidebar.file_uploader(
-    "...or upload a predictions CSV", type=["csv"]
-)
 
-if st.sidebar.button("🔄 Refresh"):
-    st.cache_data.clear()
+def run_training(data_path: str, max_rows: int, include_merged: bool, test_size: float) -> tuple[int, str]:
+    command = [
+        sys.executable,
+        str(ROOT / "model" / "train_model.py"),
+        "--data",
+        data_path,
+        "--max-rows-per-file",
+        str(max_rows),
+        "--test-size",
+        str(test_size),
+    ]
+    if include_merged:
+        command.append("--include-merged")
 
-metadata = load_json(artifacts_dir / "training_metadata.json")
-comparison = load_csv(artifacts_dir / "model_comparison.csv")
-per_model_metrics = discover_metric_files(artifacts_dir)
+    process = subprocess.run(
+        command,
+        cwd=str(ROOT),
+        text=True,
+        capture_output=True,
+        timeout=None,
+    )
+    output = process.stdout
+    if process.stderr:
+        output = f"{output}\n\nSTDERR:\n{process.stderr}"
+    return process.returncode, output
 
-st.sidebar.divider()
-if metadata:
-    st.sidebar.success(f"Loaded artifacts for: {metadata.get('project_name', 'NIDS')}")
-else:
-    st.sidebar.warning(
-        "No training_metadata.json found yet.\n\n"
-        "Run:\n`python model/train_model.py --data dataset`"
+
+def card(label: str, value: str, subtle: str = "") -> None:
+    st.markdown(
+        f"""
+        <div class="status-card">
+            <div class="status-label">{label}</div>
+            <div class="status-value">{value}</div>
+            <div class="status-subtle">{subtle}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
-st.title("Network Intrusion Detection — Model & Traffic Dashboard")
 
-tab_overview, tab_models, tab_confusion, tab_predictions = st.tabs(
-    ["📊 Overview", "🏆 Model Comparison", "🧩 Confusion Matrix & Report", "🚨 Predictions Explorer"]
+with st.sidebar:
+    st.title("NIDS Command Center")
+    st.caption("Enterprise-style ML dashboard for CSV, PKL, training, prediction, and reporting.")
+
+    artifacts_dir = Path(st.text_input("Artifacts folder", str(ARTIFACTS_DEFAULT)))
+    dataset_dir = Path(st.text_input("Dataset folder", str(DATASET_DEFAULT)))
+    model_path = Path(st.text_input("Default PKL model", str(MODEL_DEFAULT)))
+
+    st.divider()
+    sample_rows = st.slider("CSV preview rows", 100, 10000, 1000, step=100)
+    if st.button("Refresh dashboard", use_container_width=True):
+        st.cache_data.clear()
+        st.cache_resource.clear()
+        st.rerun()
+
+    st.divider()
+    st.caption("Local paths")
+    st.write(f"Root: `{ROOT}`")
+    st.write(f"Artifacts: `{rel(artifacts_dir)}`")
+
+
+metadata = load_json(str(artifacts_dir / "training_metadata.json"))
+comparison = load_csv(str(artifacts_dir / "model_comparison.csv"))
+metrics = discover_metrics(artifacts_dir)
+model_package = load_pickle_model(str(model_path))
+summary = package_summary(model_package)
+csv_files = discover_csv_files(dataset_dir)
+pkl_files = discover_pkl_files(artifacts_dir)
+
+
+st.markdown(
+    """
+    <div class="hero">
+        <h1>Enterprise Network Intrusion Detection ML Dashboard</h1>
+        <p>Operational view for dataset inspection, model registry, training control, prediction, and security analytics.</p>
+    </div>
+    """,
+    unsafe_allow_html=True,
 )
 
-# --------------------------------------------------------------------------
-# TAB 1 — Overview
-# --------------------------------------------------------------------------
-with tab_overview:
-    if not metadata:
-        st.info(
-            "Train a model first, then point the sidebar's **Artifacts folder** at "
-            "`model/artifacts` to populate this dashboard."
-        )
+
+top1, top2, top3, top4 = st.columns(4)
+with top1:
+    card("Model status", "Loaded" if model_package else "Missing", rel(model_path))
+with top2:
+    accuracy = summary.get("accuracy")
+    card("Best accuracy", f"{accuracy:.2%}" if isinstance(accuracy, float) else "N/A", summary.get("model_name", "No model"))
+with top3:
+    rows = metadata.get("training_rows") if metadata else None
+    card("Training rows", f"{rows:,}" if isinstance(rows, int) else "N/A", "from training metadata")
+with top4:
+    card("Dataset CSV files", str(len(csv_files)), rel(dataset_dir))
+
+
+tabs = st.tabs(
+    [
+        "Executive Overview",
+        "CSV Data Explorer",
+        "PKL Model Registry",
+        "Model Graphs",
+        "Train New Data",
+        "Prediction Studio",
+        "Custom Row Scoring",
+    ]
+)
+
+
+with tabs[0]:
+    st.subheader("Operational summary")
+    c1, c2, c3 = st.columns(3)
+    c1.metric("PKL artifacts", len(pkl_files))
+    c2.metric("Metric reports", len(metrics))
+    c3.metric("Feature count", summary.get("feature_count", "N/A"))
+
+    if metadata:
+        st.markdown('<div class="section-note">Training metadata is available. This dashboard is reading the latest local training artifacts.</div>', unsafe_allow_html=True)
+        st.json(metadata, expanded=False)
     else:
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Best model", metadata.get("best_model_name", "—"))
-        c2.metric("Best accuracy", f"{metadata.get('best_accuracy', 0):.2%}")
-        c3.metric("Training rows", f"{metadata.get('training_rows', 0):,}")
-        c4.metric("Feature count", metadata.get("feature_count", "—"))
+        st.warning("No training_metadata.json found. Train a model from the Train New Data tab.")
 
-        c5, c6, c7 = st.columns(3)
-        c5.metric("Data source", metadata.get("data_source", "—"))
-        c6.metric("Max rows / file", metadata.get("max_rows_per_file", "—"))
-        c7.metric("Trained at (UTC)", str(metadata.get("trained_at_utc", "—"))[:19])
+    if summary.get("labels"):
+        labels = pd.DataFrame({"Model labels": summary["labels"]})
+        st.dataframe(labels, use_container_width=True, height=260)
 
-        st.divider()
-        st.subheader("Class distribution in training data")
-        dist = metadata.get("class_distribution", {})
-        if dist:
-            dist_df = (
-                pd.DataFrame(list(dist.items()), columns=["Label", "Count"])
-                .sort_values("Count", ascending=False)
-            )
-            dist_df["Type"] = dist_df["Label"].apply(
-                lambda x: "Attack" if is_attack_label(x) else "Benign"
-            )
-            fig = px.bar(
-                dist_df,
-                x="Label",
-                y="Count",
-                color="Type",
-                color_discrete_map={"Benign": "#2E7D32", "Attack": "#C62828"},
-                log_y=True,
-                title="Training class distribution (log scale)",
-            )
-            fig.update_layout(xaxis_tickangle=-40)
-            st.plotly_chart(fig, use_container_width=True)
 
-            benign_n = dist_df.loc[dist_df["Type"] == "Benign", "Count"].sum()
-            attack_n = dist_df.loc[dist_df["Type"] == "Attack", "Count"].sum()
-            total = benign_n + attack_n
-            if total:
-                st.caption(
-                    f"Benign: {benign_n:,} ({benign_n/total:.1%})  |  "
-                    f"Attack: {attack_n:,} ({attack_n/total:.1%})  |  "
-                    f"Attack classes: {(dist_df['Type'] == 'Attack').sum()}"
-                )
+with tabs[1]:
+    st.subheader("CSV data explorer")
+    upload_csv = st.file_uploader("Upload CSV for inspection", type=["csv"], key="csv_inspect")
 
-# --------------------------------------------------------------------------
-# TAB 2 — Model comparison
-# --------------------------------------------------------------------------
-with tab_models:
-    if comparison is None or comparison.empty:
-        st.info("No `model_comparison.csv` found yet — run training to generate it.")
-    else:
-        st.subheader("Accuracy by model")
-        comp_sorted = comparison.sort_values("accuracy", ascending=False)
-        fig = px.bar(
-            comp_sorted,
-            x="model",
-            y="accuracy",
-            text_auto=".2%",
-            color="accuracy",
-            color_continuous_scale="Blues",
+    selected_path: Path | None = None
+    if csv_files:
+        selected_path = st.selectbox(
+            "Or select local dataset CSV",
+            csv_files,
+            format_func=lambda path: f"{path.name} ({file_size(path)})",
         )
-        fig.update_yaxes(range=[0, 1], tickformat=".0%")
-        st.plotly_chart(fig, use_container_width=True)
-        st.dataframe(comp_sorted.style.format({"accuracy": "{:.4f}"}), use_container_width=True)
 
-    if per_model_metrics:
-        st.divider()
-        st.subheader("Macro / weighted F1 per model")
-        rows = []
-        for name, m in per_model_metrics.items():
-            report = m.get("classification_report", {})
-            rows.append(
+    data_df = load_uploaded_csv(upload_csv)
+    if data_df is None and selected_path:
+        data_df = load_csv(str(selected_path), nrows=sample_rows)
+
+    if data_df is None:
+        st.info("Upload a CSV or place CSV files inside the dataset folder.")
+    else:
+        st.caption(f"Previewing {len(data_df):,} rows and {len(data_df.columns):,} columns.")
+        st.dataframe(data_df.head(sample_rows), use_container_width=True, height=360)
+
+        s1, s2, s3, s4 = st.columns(4)
+        s1.metric("Rows loaded", f"{len(data_df):,}")
+        s2.metric("Columns", f"{len(data_df.columns):,}")
+        s3.metric("Missing cells", f"{int(data_df.isna().sum().sum()):,}")
+        s4.metric("Duplicate rows", f"{int(data_df.duplicated().sum()):,}")
+
+        left, right = st.columns([1, 1])
+        with left:
+            st.subheader("Schema")
+            schema = pd.DataFrame(
                 {
-                    "model": name,
-                    "accuracy": m.get("accuracy"),
-                    "macro_f1": report.get("macro avg", {}).get("f1-score"),
-                    "weighted_f1": report.get("weighted avg", {}).get("f1-score"),
+                    "column": data_df.columns,
+                    "dtype": [str(dtype) for dtype in data_df.dtypes],
+                    "missing": data_df.isna().sum().values,
                 }
             )
-        st.dataframe(pd.DataFrame(rows), use_container_width=True)
+            st.dataframe(schema, use_container_width=True, height=300)
+        with right:
+            if TARGET_COLUMN in data_df.columns:
+                st.subheader("Label distribution")
+                label_counts = data_df[TARGET_COLUMN].astype(str).value_counts().reset_index()
+                label_counts.columns = ["Label", "Count"]
+                fig = px.bar(label_counts, x="Label", y="Count", color="Label")
+                fig.update_layout(showlegend=False, xaxis_tickangle=-35)
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.subheader("Numeric profile")
+                numeric_cols = data_df.select_dtypes(include="number").columns.tolist()
+                if numeric_cols:
+                    col = st.selectbox("Numeric column", numeric_cols)
+                    fig = px.histogram(data_df, x=col, nbins=50)
+                    st.plotly_chart(fig, use_container_width=True)
 
-# --------------------------------------------------------------------------
-# TAB 3 — Confusion matrix + per-class report for a chosen model
-# --------------------------------------------------------------------------
-with tab_confusion:
-    if not per_model_metrics:
-        st.info("No `*_metrics.json` files found yet — run training to generate them.")
+        st.download_button(
+            "Download current preview as CSV",
+            data_df.head(sample_rows).to_csv(index=False).encode("utf-8"),
+            file_name="nids_csv_preview.csv",
+            mime="text/csv",
+        )
+
+
+with tabs[2]:
+    st.subheader("PKL model registry")
+    if not pkl_files:
+        st.info("No `.pkl` files found in the artifacts folder.")
     else:
-        chosen = st.selectbox("Model", list(per_model_metrics.keys()))
-        m = per_model_metrics[chosen]
-        labels = m.get("labels", [])
-        matrix = m.get("confusion_matrix", [])
+        selected_pkl = st.selectbox(
+            "Select PKL artifact",
+            pkl_files,
+            index=pkl_files.index(model_path) if model_path in pkl_files else 0,
+            format_func=lambda path: f"{path.name} ({file_size(path)})",
+        )
+        selected_package = load_pickle_model(str(selected_pkl))
+        selected_summary = package_summary(selected_package)
 
-        st.subheader(f"Confusion matrix — {chosen} (accuracy {m.get('accuracy', 0):.2%})")
-        if matrix and labels:
+        p1, p2, p3, p4 = st.columns(4)
+        p1.metric("File", selected_pkl.name)
+        p2.metric("Size", file_size(selected_pkl))
+        p3.metric("Model", selected_summary.get("model_name", "unknown"))
+        p4.metric(
+            "Accuracy",
+            f"{selected_summary.get('accuracy'):.2%}"
+            if isinstance(selected_summary.get("accuracy"), float)
+            else "N/A",
+        )
+
+        st.subheader("Artifact metadata")
+        st.json(selected_summary.get("metadata", {}), expanded=False)
+
+        feature_columns = selected_package.get("feature_columns", []) if selected_package else []
+        if feature_columns:
+            st.subheader("Feature columns")
+            st.dataframe(pd.DataFrame({"feature": feature_columns}), use_container_width=True, height=300)
+
+
+with tabs[3]:
+    st.subheader("Model performance graphs")
+    if comparison is not None and not comparison.empty:
+        comp = comparison.sort_values("accuracy", ascending=False)
+        fig = px.bar(comp, x="model", y="accuracy", text_auto=".2%", color="accuracy", color_continuous_scale="Blues")
+        fig.update_yaxes(range=[0, 1], tickformat=".0%")
+        st.plotly_chart(fig, use_container_width=True)
+        st.dataframe(comp, use_container_width=True)
+    else:
+        st.info("model_comparison.csv not found. Train first.")
+
+    if metadata and metadata.get("class_distribution"):
+        st.subheader("Training class distribution")
+        dist = pd.DataFrame(list(metadata["class_distribution"].items()), columns=["Label", "Count"])
+        dist["Traffic_Type"] = dist["Label"].apply(lambda value: "Attack" if is_attack_label(value) else "Benign")
+        fig = px.bar(dist.sort_values("Count", ascending=False), x="Label", y="Count", color="Traffic_Type", log_y=True)
+        fig.update_layout(xaxis_tickangle=-35)
+        st.plotly_chart(fig, use_container_width=True)
+
+    if metrics:
+        st.subheader("Confusion matrix and report")
+        selected_metric = st.selectbox("Metric file", list(metrics.keys()))
+        report = metrics[selected_metric]
+        labels = report.get("labels", [])
+        matrix = report.get("confusion_matrix", [])
+        if labels and matrix:
             fig = go.Figure(
                 data=go.Heatmap(
                     z=matrix,
@@ -216,93 +483,93 @@ with tab_confusion:
                     texttemplate="%{text}",
                 )
             )
-            fig.update_layout(
-                xaxis_title="Predicted label",
-                yaxis_title="True label",
-                yaxis_autorange="reversed",
-                height=max(400, 40 * len(labels)),
-            )
+            fig.update_layout(xaxis_title="Predicted", yaxis_title="Actual", yaxis_autorange="reversed")
             st.plotly_chart(fig, use_container_width=True)
 
-        st.subheader("Per-class precision / recall / F1")
-        report = m.get("classification_report", {})
-        if report:
-            report_df = (
-                pd.DataFrame(report).T.drop(index=["accuracy"], errors="ignore")
-                .rename_axis("class")
-                .reset_index()
-            )
-            st.dataframe(
-                report_df.style.format(
-                    {"precision": "{:.3f}", "recall": "{:.3f}", "f1-score": "{:.3f}", "support": "{:.0f}"}
-                ),
-                use_container_width=True,
-            )
+        class_report = report.get("classification_report", {})
+        if class_report:
+            report_df = pd.DataFrame(class_report).T.drop(index=["accuracy"], errors="ignore")
+            st.dataframe(report_df, use_container_width=True)
 
-# --------------------------------------------------------------------------
-# TAB 4 — Explore a predictions.csv produced by predict.py
-# --------------------------------------------------------------------------
-with tab_predictions:
-    preds = None
-    if uploaded_predictions is not None:
-        preds = pd.read_csv(uploaded_predictions, low_memory=False)
+
+with tabs[4]:
+    st.subheader("Train model on new data")
+    st.markdown(
+        '<div class="section-note">This runs the existing ML training script. It may take time on large CSV files. Artifacts are written to model/artifacts.</div>',
+        unsafe_allow_html=True,
+    )
+    train_data_path = st.text_input("Training data path", str(dataset_dir), key="train_path")
+    max_rows = st.number_input("Max rows per file", min_value=0, max_value=1_000_000, value=50_000, step=10_000)
+    test_size = st.slider("Test size", min_value=0.1, max_value=0.4, value=0.2, step=0.05)
+    include_merged = st.checkbox("Include Merged.csv", value=False)
+
+    if st.button("Start training", type="primary"):
+        with st.spinner("Training models. Keep this tab open."):
+            code, output = run_training(train_data_path, int(max_rows), include_merged, float(test_size))
+        if code == 0:
+            st.success("Training completed. Refresh dashboard to reload artifacts.")
+        else:
+            st.error(f"Training failed with exit code {code}.")
+        st.code(output[-12000:], language="text")
+
+
+with tabs[5]:
+    st.subheader("Prediction studio")
+    if not model_package:
+        st.warning("Load or train a PKL model first.")
     else:
-        preds = load_csv(predictions_path)
+        pred_upload = st.file_uploader("Upload CSV to score", type=["csv"], key="pred_upload")
+        if pred_upload is not None:
+            raw_pred = pd.read_csv(pred_upload, low_memory=False)
+            with st.spinner("Scoring uploaded CSV"):
+                scored = predict_dataframe(model_package, raw_pred)
+            total = len(scored)
+            attacks = int((scored["Traffic_Type"] == "Attack").sum())
+            q1, q2, q3 = st.columns(3)
+            q1.metric("Rows scored", f"{total:,}")
+            q2.metric("Attack rows", f"{attacks:,}")
+            q3.metric("Attack rate", f"{attacks / total:.2%}" if total else "N/A")
 
-    if preds is None:
-        st.info(
-            "No predictions loaded. Run:\n\n"
-            "`python model/predict.py --input dataset/Friday11.csv --output predictions.csv`\n\n"
-            "then point the sidebar at the resulting CSV, or upload it directly."
-        )
-    elif "Predicted_Label" not in preds.columns:
-        st.error("This CSV has no `Predicted_Label` column — is it the output of predict.py?")
+            counts = scored["Predicted_Label"].value_counts().reset_index()
+            counts.columns = ["Predicted_Label", "Count"]
+            left, right = st.columns([1, 1])
+            with left:
+                st.plotly_chart(px.pie(counts, names="Predicted_Label", values="Count", hole=0.45), use_container_width=True)
+            with right:
+                st.plotly_chart(px.bar(counts, x="Predicted_Label", y="Count", color="Predicted_Label"), use_container_width=True)
+
+            attack_labels = sorted(scored.loc[scored["Traffic_Type"] == "Attack", "Predicted_Label"].unique())
+            selected_attack_labels = st.multiselect("Filter flagged labels", attack_labels, default=attack_labels)
+            flagged = scored[scored["Predicted_Label"].isin(selected_attack_labels)] if selected_attack_labels else scored.iloc[0:0]
+            st.dataframe(flagged, use_container_width=True, height=340)
+            st.download_button(
+                "Download scored CSV",
+                scored.to_csv(index=False).encode("utf-8"),
+                file_name=f"nids_predictions_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                mime="text/csv",
+            )
+        else:
+            st.info("Upload a CSV file to score with the selected PKL model.")
+
+
+with tabs[6]:
+    st.subheader("Custom single-row scoring")
+    if not model_package:
+        st.warning("Load or train a PKL model first.")
     else:
-        preds = preds.copy()
-        preds["Traffic_Type"] = preds["Predicted_Label"].apply(
-            lambda x: "Attack" if is_attack_label(x) else "Benign"
-        )
-
-        total = len(preds)
-        attacks = int((preds["Traffic_Type"] == "Attack").sum())
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Total flows scored", f"{total:,}")
-        c2.metric("Flagged as attack", f"{attacks:,}")
-        c3.metric("Attack rate", f"{attacks/total:.2%}" if total else "—")
-
-        left, right = st.columns([1, 1])
-        with left:
-            label_counts = preds["Predicted_Label"].value_counts().reset_index()
-            label_counts.columns = ["Predicted_Label", "Count"]
-            fig = px.pie(
-                label_counts,
-                names="Predicted_Label",
-                values="Count",
-                title="Predicted label breakdown",
-                hole=0.45,
-            )
-            st.plotly_chart(fig, use_container_width=True)
-        with right:
-            fig2 = px.bar(
-                label_counts.sort_values("Count", ascending=True),
-                x="Count",
-                y="Predicted_Label",
-                orientation="h",
-                title="Flow count per predicted label",
-            )
-            st.plotly_chart(fig2, use_container_width=True)
-
-        st.subheader("Flagged traffic (non-benign predictions)")
-        alert_choices = sorted(preds.loc[preds["Traffic_Type"] == "Attack", "Predicted_Label"].unique())
-        selected = st.multiselect("Filter by predicted attack type", alert_choices, default=alert_choices)
-        alerts = preds[preds["Predicted_Label"].isin(selected)] if selected else preds.iloc[0:0]
-        st.dataframe(alerts, use_container_width=True, height=350)
-        st.download_button(
-            "⬇️ Download flagged rows as CSV",
-            alerts.to_csv(index=False).encode("utf-8"),
-            file_name="flagged_traffic.csv",
-            mime="text/csv",
-        )
-
-        with st.expander("Full prediction table"):
-            st.dataframe(preds, use_container_width=True, height=400)
+        feature_columns = model_package.get("feature_columns", [])
+        if not feature_columns:
+            st.warning("The PKL model does not contain feature_columns metadata.")
+        else:
+            st.caption("Edit one row of feature values. Missing or unchanged fields default to 0.")
+            default_row = pd.DataFrame([{column: 0.0 for column in feature_columns}])
+            edited = st.data_editor(default_row, use_container_width=True, num_rows="fixed", height=300)
+            if st.button("Score custom row", type="primary"):
+                scored_row = predict_dataframe(model_package, edited)
+                label = scored_row.loc[0, "Predicted_Label"]
+                traffic_type = scored_row.loc[0, "Traffic_Type"]
+                if traffic_type == "Attack":
+                    st.error(f"Predicted label: {label}")
+                else:
+                    st.success(f"Predicted label: {label}")
+                st.dataframe(scored_row, use_container_width=True)

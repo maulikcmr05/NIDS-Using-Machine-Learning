@@ -1,54 +1,60 @@
-# NIDS Dashboard
+# Enterprise NIDS ML Dashboard
 
-A Streamlit dashboard that visualizes the model artifacts produced by `train_model.py` and `predict.py`. It doesn't retrain anything or touch your dataset — it just reads what training already produced.
+This Streamlit dashboard is a professional control-center layer for the NIDS machine learning project.
 
----
+It works directly with local CSV files and `.pkl` model artifacts. It does not require a separate backend service.
 
-## 1. Generate the artifacts first
+## Features
 
-The dashboard is empty until these exist. From the repo root:
+- CSV upload and dataset preview
+- Local dataset CSV explorer
+- Schema, missing value, duplicate row, and label distribution views
+- `.pkl` model registry
+- Model metadata inspection
+- Feature column inspection
+- Model comparison graph
+- Class distribution graph
+- Confusion matrix graph
+- Classification report table
+- Train new model from dashboard
+- Score uploaded CSV files
+- Download scored prediction CSV
+- Custom one-row scoring using model feature columns
 
-```bash
+## Run
+
+From the project root:
+
+```powershell
 pip install -r requirements.txt
-
-# Train all three models, save comparison + confusion matrices + metadata
-python model/train_model.py --data dataset --max-rows-per-file 50000
-
-# Score a CSV with the best saved model
-python model/predict.py --input dataset/Friday11.csv --output predictions.csv
+streamlit run dashboard\nids_dashboard.py
 ```
 
-This produces:
-```
-model/artifacts/
-  training_metadata.json        # best model, accuracy, class distribution, etc.
-  model_comparison.csv          # accuracy per model
-  random_forest_metrics.json    # confusion matrix + classification report
-  extra_trees_metrics.json
-  logistic_regression_metrics.json
-predictions.csv                 # per-row Predicted_Label from predict.py
+Open:
+
+```text
+http://localhost:8501
 ```
 
----
+## Required Artifacts
 
-## 2. Run the dashboard
+Train first if artifacts are missing:
 
-```bash
-pip install streamlit plotly
-streamlit run dashboard/nids_dashboard.py
+```powershell
+python model\train_model.py --data dataset --max-rows-per-file 50000
 ```
 
-Opens at `http://localhost:8501`. Use the sidebar to point at `model/artifacts` and `predictions.csv` if they're not in the default relative locations, or upload a predictions CSV directly.
+The dashboard reads:
 
-**Tabs:**
-- **Overview** — best model, accuracy, training rows, feature count, class distribution
-- **Model Comparison** — accuracy across Random Forest / Extra Trees / Logistic Regression, plus macro/weighted F1
-- **Confusion Matrix & Report** — interactive heatmap and per-class precision/recall/F1, model selectable
-- **Predictions Explorer** — attack rate, breakdown charts, filterable table, downloadable flagged-traffic CSV
-
----
+```text
+model/artifacts/best_nids_model.pkl
+model/artifacts/model_comparison.csv
+model/artifacts/*_metrics.json
+model/artifacts/training_metadata.json
+```
 
 ## Notes
 
-- Re-run `train_model.py` / `predict.py` any time you retrain; the dashboard just re-reads whatever's currently in `model/artifacts/` and `predictions.csv`.
-- Hit the **🔄 Refresh** button in the sidebar after retraining — file reads are cached.
+- Large datasets should be sampled during training.
+- Model artifacts are local and ignored by Git.
+- Dataset files are local and ignored by Git.
