@@ -438,6 +438,143 @@ def run_training_with_live_status(
     return code, output or ""
 
 
+def training_log_text(log_path: Path, limit: int = 12000) -> str:
+    if not log_path.exists():
+        return ""
+    text = log_path.read_text(encoding="utf-8", errors="replace")
+    return text[-limit:]
+
+
+def start_background_training(
+    data_path: str,
+    max_rows: int,
+    include_merged: bool,
+    test_size: float,
+    estimate: dict[str, Any],
+    history_path: Path,
+) -> None:
+    command = build_training_command(data_path, max_rows, include_merged, test_size)
+    history_path.parent.mkdir(parents=True, exist_ok=True)
+    log_path = history_path.parent / "active_training.log"
+    log_file = log_path.open("w", encoding="utf-8", errors="replace")
+    process = subprocess.Popen(
+        command,
+        cwd=str(ROOT),
+        text=True,
+        stdout=log_file,
+        stderr=subprocess.STDOUT,
+    )
+    log_file.close()
+    started = datetime.now()
+    st.session_state["active_training"] = {
+        "process": process,
+        "started_at": started.strftime("%Y-%m-%d %H:%M:%S"),
+        "started_monotonic": time.monotonic(),
+        "data_path": data_path,
+        "max_rows_per_file": max_rows,
+        "include_merged": include_merged,
+        "test_size": test_size,
+        "estimate": estimate,
+        "history_path": str(history_path),
+        "log_path": str(log_path),
+        "command": " ".join(command),
+    }
+
+
+def training_record(active: dict[str, Any], status: str, exit_code: int | None, elapsed_seconds: int) -> dict[str, Any]:
+    estimate = active["estimate"]
+    return {
+        "started_at": active["started_at"],
+        "ended_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "elapsed_seconds": elapsed_seconds,
+        "elapsed": format_duration(elapsed_seconds),
+        "expected_low_seconds": estimate["low_seconds"],
+        "expected_high_seconds": estimate["high_seconds"],
+        "expected_range": f"{format_duration(estimate['low_seconds'])} - {format_duration(estimate['high_seconds'])}",
+        "status": status,
+        "exit_code": exit_code,
+        "data_path": active["data_path"],
+        "max_rows_per_file": active["max_rows_per_file"],
+        "include_merged": active["include_merged"],
+        "test_size": active["test_size"],
+        "csv_files": len(estimate["files"]),
+        "estimated_rows_used": estimate["total_rows"],
+        "command": active["command"],
+    }
+
+
+def stop_active_training() -> None:
+    active = st.session_state.get("active_training")
+    if not active:
+        return
+
+    process = active["process"]
+    if process.poll() is None:
+        process.terminate()
+        try:
+            process.wait(timeout=8)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=5)
+
+    elapsed = int(time.monotonic() - active["started_monotonic"])
+    append_training_history(
+        Path(active["history_path"]),
+        training_record(active, "stopped", process.returncode, elapsed),
+    )
+    st.session_state.pop("active_training", None)
+
+
+def complete_active_training_if_finished() -> tuple[bool, str]:
+    active = st.session_state.get("active_training")
+    if not active:
+        return False, ""
+
+    process = active["process"]
+    exit_code = process.poll()
+    if exit_code is None:
+        return False, ""
+
+    elapsed = int(time.monotonic() - active["started_monotonic"])
+    status = "success" if exit_code == 0 else "failed"
+    append_training_history(
+        Path(active["history_path"]),
+        training_record(active, status, exit_code, elapsed),
+    )
+    log_text = training_log_text(Path(active["log_path"]))
+    st.session_state.pop("active_training", None)
+    return True, log_text
+
+
+def render_active_training() -> None:
+    active = st.session_state.get("active_training")
+    if not active:
+        return
+
+    process = active["process"]
+    estimate = active["estimate"]
+    elapsed = int(time.monotonic() - active["started_monotonic"])
+    high_seconds = max(int(estimate.get("high_seconds", 1)), 1)
+    remaining = max(high_seconds - elapsed, 0)
+    progress = min(elapsed / high_seconds, 0.98)
+
+    live1, live2, live3, live4 = st.columns(4)
+    live1.metric("Elapsed time", format_duration(elapsed))
+    live2.metric("Expected range", f"{format_duration(estimate['low_seconds'])} - {format_duration(estimate['high_seconds'])}")
+    live3.metric("ETA remaining", format_duration(remaining) if remaining else "finalizing")
+    live4.metric("Training PID", process.pid)
+    st.progress(progress, text=f"Training in progress: {format_duration(elapsed)} elapsed")
+    st.code(training_log_text(Path(active["log_path"]), limit=6000) or "Training started. Waiting for log output...", language="text")
+
+    if st.button("Stop training", type="secondary"):
+        stop_active_training()
+        st.warning("Training stopped. A stopped run was saved in Training History.")
+        st.rerun()
+
+    time.sleep(1)
+    st.rerun()
+
+
 def card(label: str, value: str, subtle: str = "") -> None:
     st.markdown(
         f"""
@@ -741,8 +878,16 @@ with tabs[4]:
     else:
         st.warning("No CSV files found for the selected training path.")
 
-    if st.button("Start training", type="primary"):
-        code, output = run_training_with_live_status(
+    finished, finished_log = complete_active_training_if_finished()
+    if finished:
+        st.success("Training finished. Refresh dashboard to reload artifacts and history.")
+        st.code(finished_log, language="text")
+
+    if st.session_state.get("active_training"):
+        st.subheader("Running training job")
+        render_active_training()
+    elif st.button("Start training", type="primary"):
+        start_background_training(
             train_data_path,
             int(max_rows),
             include_merged,
@@ -750,11 +895,7 @@ with tabs[4]:
             estimate,
             history_path,
         )
-        if code == 0:
-            st.success("Training completed. Refresh dashboard to reload artifacts and history.")
-        else:
-            st.error(f"Training failed with exit code {code}.")
-        st.code(output[-12000:], language="text")
+        st.rerun()
 
 
 with tabs[5]:

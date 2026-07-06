@@ -19,6 +19,7 @@ It works directly with local CSV files and `.pkl` model artifacts. It does not r
 - Train new model from dashboard
 - Expected training time before starting a run
 - Live elapsed timer while training is running
+- Stop training button for a running dashboard training job
 - Training history with actual time, expected time, status, and rows used
 - Score uploaded CSV files
 - Download scored prediction CSV
