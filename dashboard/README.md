@@ -17,9 +17,11 @@ It works directly with local CSV files and `.pkl` model artifacts. It does not r
 - Confusion matrix graph
 - Classification report table
 - Train new model from dashboard
+- Expected training time before starting a run
 - Score uploaded CSV files
 - Download scored prediction CSV
 - Custom one-row scoring using model feature columns
+- Dashboard result section with readiness checks and artifact inventory
 
 ## Run
 

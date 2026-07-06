@@ -186,6 +186,77 @@ def discover_pkl_files(folder: Path) -> list[Path]:
     return sorted(folder.glob("*.pkl"))
 
 
+def resolve_project_path(path_text: str) -> Path:
+    path = Path(path_text)
+    if path.is_absolute():
+        return path
+    return ROOT / path
+
+
+@st.cache_data(show_spinner=False)
+def estimate_csv_rows(path_text: str) -> int:
+    path = Path(path_text)
+    if not path.exists() or path.stat().st_size == 0:
+        return 0
+
+    sample_size = min(path.stat().st_size, 1024 * 1024)
+    with path.open("rb") as file:
+        sample = file.read(sample_size)
+
+    line_count = max(sample.count(b"\n"), 1)
+    avg_bytes_per_line = max(sample_size / line_count, 1)
+    return int(path.stat().st_size / avg_bytes_per_line)
+
+
+def training_files(data_path: str, include_merged: bool) -> list[Path]:
+    path = resolve_project_path(data_path)
+    if path.is_file() and path.suffix.lower() == ".csv":
+        return [path]
+    if not path.exists():
+        return []
+    files = sorted(path.glob("*.csv"))
+    if not include_merged and len(files) > 1:
+        files = [file for file in files if file.name.lower() != "merged.csv"]
+    return files
+
+
+def training_estimate(data_path: str, max_rows: int, include_merged: bool) -> dict[str, Any]:
+    files = training_files(data_path, include_merged)
+    rows = []
+    for file in files:
+        estimated_rows = estimate_csv_rows(str(file))
+        selected_rows = estimated_rows if max_rows == 0 else min(estimated_rows, max_rows)
+        rows.append(
+            {
+                "file": file.name,
+                "size": file_size(file),
+                "estimated_rows": estimated_rows,
+                "selected_rows": selected_rows,
+            }
+        )
+
+    total_rows = sum(item["selected_rows"] for item in rows)
+    # Conservative laptop estimate for this project: data prep plus 3 sklearn models.
+    low_seconds = int(45 + total_rows * 0.0015)
+    high_seconds = int(90 + total_rows * 0.0035)
+    return {
+        "files": rows,
+        "total_rows": total_rows,
+        "low_seconds": low_seconds,
+        "high_seconds": high_seconds,
+    }
+
+
+def format_duration(seconds: int) -> str:
+    if seconds < 60:
+        return f"{seconds}s"
+    minutes, sec = divmod(seconds, 60)
+    if minutes < 60:
+        return f"{minutes}m {sec}s"
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours}h {minutes}m"
+
+
 def discover_metrics(folder: Path) -> dict[str, dict[str, Any]]:
     metrics: dict[str, dict[str, Any]] = {}
     if not folder.exists():
@@ -338,6 +409,42 @@ with tabs[0]:
     c1.metric("PKL artifacts", len(pkl_files))
     c2.metric("Metric reports", len(metrics))
     c3.metric("Feature count", summary.get("feature_count", "N/A"))
+
+    st.subheader("Dashboard result")
+    model_ready = bool(model_package)
+    metadata_ready = bool(metadata)
+    comparison_ready = comparison is not None and not comparison.empty
+    metrics_ready = bool(metrics)
+    dataset_ready = bool(csv_files)
+    ready_score = sum([model_ready, metadata_ready, comparison_ready, metrics_ready, dataset_ready])
+    result_cols = st.columns(4)
+    result_cols[0].metric("Readiness score", f"{ready_score}/5")
+    result_cols[1].metric("Model registry", "Ready" if model_ready else "Missing")
+    result_cols[2].metric("Training reports", "Ready" if metrics_ready else "Missing")
+    result_cols[3].metric("Dataset access", "Ready" if dataset_ready else "Missing")
+
+    checklist = pd.DataFrame(
+        [
+            {"Check": "PKL model can be loaded", "Status": "Pass" if model_ready else "Missing", "Details": rel(model_path)},
+            {"Check": "Training metadata exists", "Status": "Pass" if metadata_ready else "Missing", "Details": rel(artifacts_dir / "training_metadata.json")},
+            {"Check": "Model comparison exists", "Status": "Pass" if comparison_ready else "Missing", "Details": rel(artifacts_dir / "model_comparison.csv")},
+            {"Check": "Metrics JSON files exist", "Status": "Pass" if metrics_ready else "Missing", "Details": f"{len(metrics)} report(s)"},
+            {"Check": "Dataset CSV files visible", "Status": "Pass" if dataset_ready else "Missing", "Details": f"{len(csv_files)} CSV file(s)"},
+        ]
+    )
+    st.dataframe(checklist, use_container_width=True, hide_index=True)
+
+    if pkl_files:
+        st.subheader("Artifact inventory")
+        artifact_rows = [
+            {
+                "file": file.name,
+                "size": file_size(file),
+                "modified": datetime.fromtimestamp(file.stat().st_mtime).strftime("%Y-%m-%d %H:%M"),
+            }
+            for file in pkl_files
+        ]
+        st.dataframe(pd.DataFrame(artifact_rows), use_container_width=True, hide_index=True)
 
     if metadata:
         st.markdown('<div class="section-note">Training metadata is available. This dashboard is reading the latest local training artifacts.</div>', unsafe_allow_html=True)
@@ -502,6 +609,19 @@ with tabs[4]:
     max_rows = st.number_input("Max rows per file", min_value=0, max_value=1_000_000, value=50_000, step=10_000)
     test_size = st.slider("Test size", min_value=0.1, max_value=0.4, value=0.2, step=0.05)
     include_merged = st.checkbox("Include Merged.csv", value=False)
+
+    estimate = training_estimate(train_data_path, int(max_rows), include_merged)
+    st.subheader("Expected training time")
+    e1, e2, e3, e4 = st.columns(4)
+    e1.metric("CSV files used", len(estimate["files"]))
+    e2.metric("Estimated rows used", f"{estimate['total_rows']:,}")
+    e3.metric("Expected time", f"{format_duration(estimate['low_seconds'])} - {format_duration(estimate['high_seconds'])}")
+    e4.metric("Models trained", "3")
+    st.caption("Estimate is based on CSV size, selected row limit, and three sklearn models. Actual time depends on CPU, RAM, and disk speed.")
+    if estimate["files"]:
+        st.dataframe(pd.DataFrame(estimate["files"]), use_container_width=True, hide_index=True)
+    else:
+        st.warning("No CSV files found for the selected training path.")
 
     if st.button("Start training", type="primary"):
         with st.spinner("Training models. Keep this tab open."):
