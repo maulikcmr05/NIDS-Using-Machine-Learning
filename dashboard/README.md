@@ -18,6 +18,8 @@ It works directly with local CSV files and `.pkl` model artifacts. It does not r
 - Classification report table
 - Train new model from dashboard
 - Expected training time before starting a run
+- Live elapsed timer while training is running
+- Training history with actual time, expected time, status, and rows used
 - Score uploaded CSV files
 - Download scored prediction CSV
 - Custom one-row scoring using model feature columns
@@ -53,6 +55,7 @@ model/artifacts/best_nids_model.pkl
 model/artifacts/model_comparison.csv
 model/artifacts/*_metrics.json
 model/artifacts/training_metadata.json
+model/artifacts/training_history.json
 ```
 
 ## Notes

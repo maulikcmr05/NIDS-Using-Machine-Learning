@@ -1,0 +1,202 @@
+NIDS Using Machine Learning - Project Start Guide
+================================================
+
+GitHub Repository
+-----------------
+https://github.com/maulikcmr05/NIDS-Using-Machine-Learning
+
+
+1. Download or Clone the Project
+--------------------------------
+Option A: Download ZIP
+
+1. Open the GitHub link.
+2. Click Code.
+3. Click Download ZIP.
+4. Extract the ZIP file.
+5. Open the extracted folder.
+
+Option B: Clone with Git
+
+git clone https://github.com/maulikcmr05/NIDS-Using-Machine-Learning.git
+cd NIDS-Using-Machine-Learning
+
+
+2. Add the Dataset
+------------------
+The dataset is not uploaded to GitHub because it is large.
+
+Create a folder named:
+
+dataset
+
+Put the CSV files inside it:
+
+dataset/Friday11.csv
+dataset/Friday21.csv
+dataset/Friday31.csv
+dataset/Monday1.csv
+dataset/Tuesday1.csv
+dataset/Wednesday1.csv
+dataset/Thursday11.csv
+dataset/Thursday21.csv
+
+Merged.csv is optional. By default, the training script skips Merged.csv when other CSV files exist.
+
+
+3. Create and Activate Python Environment
+-----------------------------------------
+Open PowerShell in the project folder:
+
+cd E:\NIDS-Using-Machine-Learning
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+
+If PowerShell blocks activation:
+
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+.\.venv\Scripts\Activate.ps1
+
+
+4. Install Requirements
+-----------------------
+Use python -m pip so it works even when pip is not globally available:
+
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+
+
+5. Start the Dashboard
+----------------------
+Run:
+
+python -m streamlit run dashboard\nids_dashboard.py
+
+Open this URL:
+
+http://localhost:8501
+
+
+6. Train a Model from Dashboard
+-------------------------------
+1. Open the Train New Data tab.
+2. Check the Expected Training Time section.
+3. Confirm:
+   - CSV files used
+   - Estimated rows used
+   - Expected time range
+   - Models trained
+4. Click Start training.
+5. While training runs, the dashboard shows:
+   - Elapsed time
+   - Expected range
+   - ETA remaining
+   - Training status
+6. After training finishes, the result is saved in the Training History tab.
+
+
+7. Train a Model from PowerShell
+--------------------------------
+Fast training:
+
+python model\train_model.py --data dataset --max-rows-per-file 50000
+
+More data:
+
+python model\train_model.py --data dataset --max-rows-per-file 150000
+
+Full dataset:
+
+python model\train_model.py --data dataset --max-rows-per-file 0
+
+
+8. Model Output Files
+---------------------
+After training, artifacts are saved here:
+
+model\artifacts
+
+Important files:
+
+model\artifacts\best_nids_model.pkl
+model\artifacts\model_comparison.csv
+model\artifacts\training_metadata.json
+model\artifacts\training_history.json
+model\artifacts\*_metrics.json
+
+
+9. Use Prediction
+-----------------
+Dashboard method:
+
+1. Open Prediction Studio.
+2. Upload a CSV file.
+3. The dashboard predicts labels.
+4. Download the scored CSV.
+
+Command-line method:
+
+python model\predict.py --input dataset\Friday11.csv --output predictions.csv
+
+
+10. Dashboard Tabs
+------------------
+Executive Overview:
+Shows readiness result, model status, dataset status, reports, and artifact inventory.
+
+CSV Data Explorer:
+Views CSV data, schema, missing values, duplicate rows, and label distribution.
+
+PKL Model Registry:
+Views .pkl files, model metadata, accuracy, and feature columns.
+
+Model Graphs:
+Shows model comparison, class distribution, confusion matrix, and classification report.
+
+Train New Data:
+Shows expected training time and starts a new training run with live elapsed time.
+
+Training History:
+Shows previous training runs, actual training time, expected time, status, and rows used.
+
+Prediction Studio:
+Scores uploaded CSV files and exports predictions.
+
+Custom Row Scoring:
+Allows one manual row to be edited and scored using the trained model.
+
+
+11. Common Fixes
+----------------
+pip is not recognized:
+
+python -m pip install -r requirements.txt
+
+streamlit is not recognized:
+
+python -m streamlit run dashboard\nids_dashboard.py
+
+Model not found:
+
+Train the model first from the dashboard or PowerShell.
+
+No CSV files found:
+
+Put your dataset CSV files inside the dataset folder.
+
+Training is slow:
+
+Use fewer rows:
+
+python model\train_model.py --data dataset --max-rows-per-file 20000
+
+
+12. Recommended Daily Start
+---------------------------
+cd E:\NIDS-Using-Machine-Learning
+.\.venv\Scripts\Activate.ps1
+python -m streamlit run dashboard\nids_dashboard.py
+
+Then open:
+
+http://localhost:8501

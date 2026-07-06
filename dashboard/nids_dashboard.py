@@ -4,6 +4,7 @@ import json
 import pickle
 import subprocess
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -323,6 +324,120 @@ def run_training(data_path: str, max_rows: int, include_merged: bool, test_size:
     return process.returncode, output
 
 
+def build_training_command(data_path: str, max_rows: int, include_merged: bool, test_size: float) -> list[str]:
+    command = [
+        sys.executable,
+        str(ROOT / "model" / "train_model.py"),
+        "--data",
+        data_path,
+        "--max-rows-per-file",
+        str(max_rows),
+        "--test-size",
+        str(test_size),
+    ]
+    if include_merged:
+        command.append("--include-merged")
+    return command
+
+
+def load_training_history(history_path: Path) -> list[dict[str, Any]]:
+    if not history_path.exists():
+        return []
+    try:
+        data = json.loads(history_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return []
+    return data if isinstance(data, list) else []
+
+
+def save_training_history(history_path: Path, history: list[dict[str, Any]]) -> None:
+    history_path.parent.mkdir(parents=True, exist_ok=True)
+    history_path.write_text(json.dumps(history[-50:], indent=2), encoding="utf-8")
+
+
+def append_training_history(history_path: Path, record: dict[str, Any]) -> None:
+    history = load_training_history(history_path)
+    history.append(record)
+    save_training_history(history_path, history)
+
+
+def run_training_with_live_status(
+    data_path: str,
+    max_rows: int,
+    include_merged: bool,
+    test_size: float,
+    estimate: dict[str, Any],
+    history_path: Path,
+) -> tuple[int, str]:
+    command = build_training_command(data_path, max_rows, include_merged, test_size)
+    started = datetime.now()
+    started_monotonic = time.monotonic()
+
+    status_box = st.empty()
+    progress_box = st.empty()
+    metrics_box = st.empty()
+
+    process = subprocess.Popen(
+        command,
+        cwd=str(ROOT),
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+
+    high_seconds = max(int(estimate.get("high_seconds", 1)), 1)
+    while process.poll() is None:
+        elapsed = int(time.monotonic() - started_monotonic)
+        remaining = max(high_seconds - elapsed, 0)
+        progress = min(elapsed / high_seconds, 0.98)
+
+        with metrics_box.container():
+            live1, live2, live3, live4 = st.columns(4)
+            live1.metric("Elapsed time", format_duration(elapsed))
+            live2.metric("Expected range", f"{format_duration(estimate['low_seconds'])} - {format_duration(estimate['high_seconds'])}")
+            live3.metric("ETA remaining", format_duration(remaining) if remaining else "finalizing")
+            live4.metric("Training status", "Running")
+        progress_box.progress(progress, text=f"Training in progress: {format_duration(elapsed)} elapsed")
+        status_box.info("Training is running. Keep this browser tab open until the result appears.")
+        time.sleep(1)
+
+    output, _ = process.communicate()
+    ended = datetime.now()
+    elapsed_seconds = int(time.monotonic() - started_monotonic)
+    code = process.returncode
+
+    progress_box.progress(1.0, text=f"Training finished in {format_duration(elapsed_seconds)}")
+    with metrics_box.container():
+        done1, done2, done3, done4 = st.columns(4)
+        done1.metric("Actual training time", format_duration(elapsed_seconds))
+        done2.metric("Expected range", f"{format_duration(estimate['low_seconds'])} - {format_duration(estimate['high_seconds'])}")
+        done3.metric("Exit code", code)
+        done4.metric("Training status", "Success" if code == 0 else "Failed")
+
+    append_training_history(
+        history_path,
+        {
+            "started_at": started.strftime("%Y-%m-%d %H:%M:%S"),
+            "ended_at": ended.strftime("%Y-%m-%d %H:%M:%S"),
+            "elapsed_seconds": elapsed_seconds,
+            "elapsed": format_duration(elapsed_seconds),
+            "expected_low_seconds": estimate["low_seconds"],
+            "expected_high_seconds": estimate["high_seconds"],
+            "expected_range": f"{format_duration(estimate['low_seconds'])} - {format_duration(estimate['high_seconds'])}",
+            "status": "success" if code == 0 else "failed",
+            "exit_code": code,
+            "data_path": data_path,
+            "max_rows_per_file": max_rows,
+            "include_merged": include_merged,
+            "test_size": test_size,
+            "csv_files": len(estimate["files"]),
+            "estimated_rows_used": estimate["total_rows"],
+            "command": " ".join(command),
+        },
+    )
+    return code, output or ""
+
+
 def card(label: str, value: str, subtle: str = "") -> None:
     st.markdown(
         f"""
@@ -364,6 +479,8 @@ model_package = load_pickle_model(str(model_path))
 summary = package_summary(model_package)
 csv_files = discover_csv_files(dataset_dir)
 pkl_files = discover_pkl_files(artifacts_dir)
+history_path = artifacts_dir / "training_history.json"
+training_history = load_training_history(history_path)
 
 
 st.markdown(
@@ -397,6 +514,7 @@ tabs = st.tabs(
         "PKL Model Registry",
         "Model Graphs",
         "Train New Data",
+        "Training History",
         "Prediction Studio",
         "Custom Row Scoring",
     ]
@@ -624,16 +742,77 @@ with tabs[4]:
         st.warning("No CSV files found for the selected training path.")
 
     if st.button("Start training", type="primary"):
-        with st.spinner("Training models. Keep this tab open."):
-            code, output = run_training(train_data_path, int(max_rows), include_merged, float(test_size))
+        code, output = run_training_with_live_status(
+            train_data_path,
+            int(max_rows),
+            include_merged,
+            float(test_size),
+            estimate,
+            history_path,
+        )
         if code == 0:
-            st.success("Training completed. Refresh dashboard to reload artifacts.")
+            st.success("Training completed. Refresh dashboard to reload artifacts and history.")
         else:
             st.error(f"Training failed with exit code {code}.")
         st.code(output[-12000:], language="text")
 
 
 with tabs[5]:
+    st.subheader("Last training data history")
+    if not training_history:
+        st.info("No training runs recorded yet. Start training once from the Train New Data tab.")
+    else:
+        history_df = pd.DataFrame(training_history).sort_values("started_at", ascending=False)
+        h1, h2, h3, h4 = st.columns(4)
+        last_run = history_df.iloc[0].to_dict()
+        h1.metric("Total runs", len(history_df))
+        h2.metric("Last status", str(last_run.get("status", "unknown")).title())
+        h3.metric("Last actual time", last_run.get("elapsed", "N/A"))
+        h4.metric("Last rows used", f"{int(last_run.get('estimated_rows_used', 0)):,}")
+
+        status_counts = history_df["status"].value_counts().reset_index()
+        status_counts.columns = ["Status", "Runs"]
+        left, right = st.columns([1, 2])
+        with left:
+            fig = px.pie(status_counts, names="Status", values="Runs", hole=0.45)
+            st.plotly_chart(fig, use_container_width=True)
+        with right:
+            chart_df = history_df.copy()
+            chart_df["elapsed_minutes"] = chart_df["elapsed_seconds"] / 60
+            fig = px.bar(
+                chart_df.head(15),
+                x="started_at",
+                y="elapsed_minutes",
+                color="status",
+                hover_data=["data_path", "max_rows_per_file", "estimated_rows_used", "expected_range"],
+                title="Recent training run duration",
+            )
+            fig.update_layout(xaxis_tickangle=-35, yaxis_title="Minutes")
+            st.plotly_chart(fig, use_container_width=True)
+
+        visible_cols = [
+            "started_at",
+            "ended_at",
+            "status",
+            "elapsed",
+            "expected_range",
+            "estimated_rows_used",
+            "csv_files",
+            "max_rows_per_file",
+            "include_merged",
+            "test_size",
+            "data_path",
+        ]
+        st.dataframe(history_df[[col for col in visible_cols if col in history_df.columns]], use_container_width=True, hide_index=True)
+        st.download_button(
+            "Download training history JSON",
+            json.dumps(training_history, indent=2).encode("utf-8"),
+            file_name="training_history.json",
+            mime="application/json",
+        )
+
+
+with tabs[6]:
     st.subheader("Prediction studio")
     if not model_package:
         st.warning("Load or train a PKL model first.")
@@ -672,7 +851,7 @@ with tabs[5]:
             st.info("Upload a CSV file to score with the selected PKL model.")
 
 
-with tabs[6]:
+with tabs[7]:
     st.subheader("Custom single-row scoring")
     if not model_package:
         st.warning("Load or train a PKL model first.")
