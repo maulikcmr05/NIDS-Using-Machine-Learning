@@ -303,8 +303,225 @@ ENTERPRISE_CSS = """
         background: linear-gradient(90deg, var(--accent), var(--accent-2));
     }
 
+    .event-card {
+        padding: 14px 16px;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: rgba(15, 23, 42, .72);
+        margin: .7rem 0 1rem 0;
+    }
+
+    .event-title {
+        color: #f8fafc;
+        font-weight: 800;
+        margin-bottom: .35rem;
+    }
+
+    .event-detail {
+        color: #b8c6d8;
+        font-size: 14px;
+        line-height: 1.55;
+    }
+
+    .confirm-card {
+        padding: 18px 20px;
+        border: 1px solid rgba(251, 191, 36, .42);
+        border-radius: 14px;
+        background: linear-gradient(135deg, rgba(120, 83, 20, .30), rgba(15, 23, 42, .78));
+        box-shadow: 0 14px 30px rgba(0, 0, 0, .22);
+        margin: 1rem 0;
+    }
+
+    .confirm-card strong {
+        color: #fde68a;
+    }
+
     hr {
         border-color: var(--border);
+    }
+
+    /* Layout rhythm */
+    .main .block-container {
+        padding-left: clamp(22px, 3vw, 46px);
+        padding-right: clamp(22px, 3vw, 46px);
+    }
+
+    [data-testid="stVerticalBlock"] {
+        gap: 1.05rem;
+    }
+
+    [data-testid="stHorizontalBlock"] {
+        gap: 1rem;
+        align-items: stretch;
+    }
+
+    [data-testid="column"] {
+        padding: 0 .25rem;
+    }
+
+    [data-testid="column"] > div {
+        height: 100%;
+    }
+
+    [data-testid="stSidebar"] > div:first-child {
+        padding: 2rem 1.35rem 1.5rem 1.35rem;
+    }
+
+    [data-testid="stSidebar"] label {
+        margin-top: .95rem;
+        margin-bottom: .35rem;
+        color: #d7e3f2 !important;
+        font-size: 13px !important;
+        font-weight: 750 !important;
+    }
+
+    [data-testid="stSidebar"] .stTextInput,
+    [data-testid="stSidebar"] .stSlider,
+    [data-testid="stSidebar"] .stButton {
+        margin-bottom: 1rem;
+    }
+
+    [data-testid="stSidebar"] hr {
+        margin: 1.45rem 0 1.25rem 0;
+    }
+
+    .element-container {
+        margin-bottom: .35rem;
+    }
+
+    h2 {
+        margin-top: 1.45rem;
+        margin-bottom: .9rem;
+        font-size: 1.45rem;
+    }
+
+    h3 {
+        margin-top: 1.1rem;
+        margin-bottom: .75rem;
+        font-size: 1.12rem;
+    }
+
+    .stMarkdown p {
+        color: #c5d1df;
+        line-height: 1.62;
+    }
+
+    .hero + div[data-testid="stHorizontalBlock"] {
+        margin-top: .85rem;
+        margin-bottom: 2.75rem;
+        row-gap: 1.35rem;
+    }
+
+    .main div[data-testid="stHorizontalBlock"]:has(.status-card) {
+        margin-bottom: 0.2cm;
+        row-gap: 1.4rem;
+    }
+
+    .status-card {
+        margin-bottom: 0.2cm;
+    }
+
+    .stTabs {
+        margin-top: 0.2cm;
+        clear: both;
+    }
+
+    .stTabs [data-baseweb="tab-list"] {
+        flex-wrap: wrap;
+        row-gap: 10px;
+        padding-top: 0.2cm;
+        margin-top: .35rem;
+    }
+
+    .stTabs [data-baseweb="tab-panel"] {
+        padding-top: 1.15rem;
+    }
+
+    div[data-testid="stMetric"] {
+        min-height: 108px;
+        margin-bottom: .8rem;
+    }
+
+    div[data-testid="stMetricValue"] {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        max-width: 100%;
+    }
+
+    [data-testid="stDataFrame"], [data-testid="stTable"] {
+        margin-top: .55rem;
+        margin-bottom: 1.25rem;
+    }
+
+    [data-testid="stFileUploader"] {
+        margin-top: .5rem;
+        margin-bottom: 1.15rem;
+    }
+
+    .stTextInput,
+    .stNumberInput,
+    .stSelectbox,
+    .stSlider,
+    .stCheckbox,
+    .stMultiSelect {
+        margin-bottom: .9rem;
+    }
+
+    .stButton,
+    .stDownloadButton {
+        margin-top: .45rem;
+        margin-bottom: .8rem;
+    }
+
+    .stButton > button, .stDownloadButton > button {
+        padding: .62rem 1rem;
+    }
+
+    .stAlert {
+        margin-top: .75rem;
+        margin-bottom: 1rem;
+    }
+
+    .js-plotly-plot {
+        border: 1px solid var(--border-soft);
+        border-radius: 12px;
+        overflow: hidden;
+        margin: .45rem 0 1.25rem 0;
+        background: rgba(15, 23, 42, .36);
+    }
+
+    [data-testid="stExpander"] {
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: rgba(15, 23, 42, .52);
+        margin: .75rem 0 1.1rem 0;
+    }
+
+    @media (max-width: 900px) {
+        .main .block-container {
+            padding-left: 16px;
+            padding-right: 16px;
+            padding-top: 1rem;
+        }
+
+        .hero {
+            padding: 22px 20px;
+            border-radius: 12px;
+        }
+
+        .hero h1 {
+            font-size: 28px;
+        }
+
+        .status-card {
+            min-height: 104px;
+        }
+
+        .stTabs [data-baseweb="tab"] {
+            height: 40px;
+            padding: 0 12px;
+        }
     }
 </style>
 """
@@ -448,6 +665,67 @@ def format_duration(seconds: int) -> str:
         return f"{minutes}m {sec}s"
     hours, minutes = divmod(minutes, 60)
     return f"{hours}h {minutes}m"
+
+
+def init_session_state() -> None:
+    st.session_state.setdefault("ui_events", [])
+    st.session_state.setdefault("pending_training", None)
+    st.session_state.setdefault("pending_stop_training", False)
+
+
+def push_event(level: str, title: str, detail: str = "") -> None:
+    event = {
+        "time": datetime.now().strftime("%H:%M:%S"),
+        "level": level.upper(),
+        "title": title,
+        "detail": detail,
+    }
+    st.session_state["ui_events"] = [event, *st.session_state.get("ui_events", [])][:30]
+
+    icon = {"success": "✅", "error": "❌", "warning": "⚠️", "info": "ℹ️"}.get(level.lower(), "ℹ️")
+    try:
+        st.toast(f"{title}{': ' + detail if detail else ''}", icon=icon)
+    except Exception:
+        pass
+
+
+def render_event_card(title: str, detail: str, level: str = "info") -> None:
+    color = {
+        "success": "#22c55e",
+        "error": "#fb7185",
+        "warning": "#fbbf24",
+        "info": "#38bdf8",
+    }.get(level, "#38bdf8")
+    st.markdown(
+        f"""
+        <div class="event-card" style="border-left: 4px solid {color};">
+            <div class="event-title">{title}</div>
+            <div class="event-detail">{detail}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def validate_training_request(data_path: str, estimate: dict[str, Any]) -> list[str]:
+    errors = []
+    if st.session_state.get("active_training"):
+        errors.append("Another training job is already running.")
+    if not data_path.strip():
+        errors.append("Training data path is empty.")
+    if not estimate["files"]:
+        errors.append("No CSV files found for the selected training path.")
+    if estimate["total_rows"] <= 0:
+        errors.append("Estimated selected rows is zero. Check dataset files or row limit.")
+    return errors
+
+
+def render_recent_events(limit: int = 8) -> None:
+    events = st.session_state.get("ui_events", [])
+    if not events:
+        st.info("No dashboard events yet. Click actions such as Refresh, Start training, Stop training, or Score to see events here.")
+        return
+    st.dataframe(pd.DataFrame(events[:limit]), use_container_width=True, hide_index=True)
 
 
 def discover_metrics(folder: Path) -> dict[str, dict[str, Any]]:
@@ -759,9 +1037,30 @@ def render_active_training() -> None:
     st.code(training_log_text(Path(active["log_path"]), limit=6000) or "Training started. Waiting for log output...", language="text")
 
     if st.button("Stop training", type="secondary"):
-        stop_active_training()
-        st.warning("Training stopped. A stopped run was saved in Training History.")
+        st.session_state["pending_stop_training"] = True
+        push_event("warning", "Stop requested", "Confirm stop to terminate the active training process.")
         st.rerun()
+
+    if st.session_state.get("pending_stop_training"):
+        st.markdown(
+            """
+            <div class="confirm-card">
+                <strong>Confirm stop training</strong><br>
+                This will terminate the running training process and save the run as stopped in Training History.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        confirm_col, cancel_col = st.columns([1, 1])
+        if confirm_col.button("Confirm stop", type="primary"):
+            stop_active_training()
+            st.session_state["pending_stop_training"] = False
+            push_event("warning", "Training stopped", "Stopped run saved in Training History.")
+            st.rerun()
+        if cancel_col.button("Cancel stop"):
+            st.session_state["pending_stop_training"] = False
+            push_event("info", "Stop cancelled", "Training continues.")
+            st.rerun()
 
     time.sleep(1)
     st.rerun()
@@ -780,6 +1079,9 @@ def card(label: str, value: str, subtle: str = "") -> None:
     )
 
 
+init_session_state()
+
+
 with st.sidebar:
     st.title("NIDS Command Center")
     st.caption("Enterprise-style ML dashboard for CSV, PKL, training, prediction, and reporting.")
@@ -791,6 +1093,7 @@ with st.sidebar:
     st.divider()
     sample_rows = st.slider("CSV preview rows", 100, 10000, 1000, step=100)
     if st.button("Refresh dashboard", use_container_width=True):
+        push_event("info", "Dashboard refreshed", "Cache cleared and dashboard reloaded.")
         st.cache_data.clear()
         st.cache_resource.clear()
         st.rerun()
@@ -846,6 +1149,7 @@ tabs = st.tabs(
         "Training History",
         "Prediction Studio",
         "Custom Row Scoring",
+        "Event Center",
     ]
 )
 
@@ -1079,15 +1383,52 @@ with tabs[4]:
         st.subheader("Running training job")
         render_active_training()
     elif st.button("Start training", type="primary"):
-        start_background_training(
-            train_data_path,
-            int(max_rows),
-            include_merged,
-            float(test_size),
-            estimate,
-            history_path,
-        )
+        errors = validate_training_request(train_data_path, estimate)
+        if errors:
+            for error in errors:
+                st.error(error)
+            push_event("error", "Training validation failed", " | ".join(errors))
+        else:
+            st.session_state["pending_training"] = {
+                "data_path": train_data_path,
+                "max_rows": int(max_rows),
+                "include_merged": include_merged,
+                "test_size": float(test_size),
+                "estimate": estimate,
+            }
+            push_event("info", "Training start requested", f"{estimate['total_rows']:,} rows selected.")
         st.rerun()
+
+    pending_training = st.session_state.get("pending_training")
+    if pending_training:
+        st.markdown(
+            f"""
+            <div class="confirm-card">
+                <strong>Confirm model training</strong><br>
+                Dataset path: {pending_training['data_path']}<br>
+                Estimated rows: {pending_training['estimate']['total_rows']:,}<br>
+                Expected time: {format_duration(pending_training['estimate']['low_seconds'])} - {format_duration(pending_training['estimate']['high_seconds'])}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        confirm_col, cancel_col = st.columns([1, 1])
+        if confirm_col.button("Confirm start training", type="primary"):
+            start_background_training(
+                pending_training["data_path"],
+                pending_training["max_rows"],
+                pending_training["include_merged"],
+                pending_training["test_size"],
+                pending_training["estimate"],
+                history_path,
+            )
+            st.session_state["pending_training"] = None
+            push_event("success", "Training started", "Live timer and Stop button are now active.")
+            st.rerun()
+        if cancel_col.button("Cancel training"):
+            st.session_state["pending_training"] = None
+            push_event("info", "Training cancelled", "No process was started.")
+            st.rerun()
 
 
 with tabs[5]:
@@ -1152,34 +1493,44 @@ with tabs[6]:
     else:
         pred_upload = st.file_uploader("Upload CSV to score", type=["csv"], key="pred_upload")
         if pred_upload is not None:
-            raw_pred = pd.read_csv(pred_upload, low_memory=False)
-            with st.spinner("Scoring uploaded CSV"):
-                scored = predict_dataframe(model_package, raw_pred)
-            total = len(scored)
-            attacks = int((scored["Traffic_Type"] == "Attack").sum())
-            q1, q2, q3 = st.columns(3)
-            q1.metric("Rows scored", f"{total:,}")
-            q2.metric("Attack rows", f"{attacks:,}")
-            q3.metric("Attack rate", f"{attacks / total:.2%}" if total else "N/A")
+            try:
+                raw_pred = pd.read_csv(pred_upload, low_memory=False)
+                if raw_pred.empty:
+                    st.error("Uploaded CSV is empty.")
+                    push_event("error", "Prediction failed", "Uploaded CSV is empty.")
+                else:
+                    with st.spinner("Scoring uploaded CSV"):
+                        scored = predict_dataframe(model_package, raw_pred)
+                    total = len(scored)
+                    attacks = int((scored["Traffic_Type"] == "Attack").sum())
+                    push_event("success", "Prediction completed", f"{total:,} rows scored, {attacks:,} attack rows flagged.")
+                    render_event_card("Prediction completed", f"{total:,} rows scored. Attack rows flagged: {attacks:,}.", "success")
+                    q1, q2, q3 = st.columns(3)
+                    q1.metric("Rows scored", f"{total:,}")
+                    q2.metric("Attack rows", f"{attacks:,}")
+                    q3.metric("Attack rate", f"{attacks / total:.2%}" if total else "N/A")
 
-            counts = scored["Predicted_Label"].value_counts().reset_index()
-            counts.columns = ["Predicted_Label", "Count"]
-            left, right = st.columns([1, 1])
-            with left:
-                st.plotly_chart(px.pie(counts, names="Predicted_Label", values="Count", hole=0.45), use_container_width=True)
-            with right:
-                st.plotly_chart(px.bar(counts, x="Predicted_Label", y="Count", color="Predicted_Label"), use_container_width=True)
+                    counts = scored["Predicted_Label"].value_counts().reset_index()
+                    counts.columns = ["Predicted_Label", "Count"]
+                    left, right = st.columns([1, 1])
+                    with left:
+                        st.plotly_chart(px.pie(counts, names="Predicted_Label", values="Count", hole=0.45), use_container_width=True)
+                    with right:
+                        st.plotly_chart(px.bar(counts, x="Predicted_Label", y="Count", color="Predicted_Label"), use_container_width=True)
 
-            attack_labels = sorted(scored.loc[scored["Traffic_Type"] == "Attack", "Predicted_Label"].unique())
-            selected_attack_labels = st.multiselect("Filter flagged labels", attack_labels, default=attack_labels)
-            flagged = scored[scored["Predicted_Label"].isin(selected_attack_labels)] if selected_attack_labels else scored.iloc[0:0]
-            st.dataframe(flagged, use_container_width=True, height=340)
-            st.download_button(
-                "Download scored CSV",
-                scored.to_csv(index=False).encode("utf-8"),
-                file_name=f"nids_predictions_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                mime="text/csv",
-            )
+                    attack_labels = sorted(scored.loc[scored["Traffic_Type"] == "Attack", "Predicted_Label"].unique())
+                    selected_attack_labels = st.multiselect("Filter flagged labels", attack_labels, default=attack_labels)
+                    flagged = scored[scored["Predicted_Label"].isin(selected_attack_labels)] if selected_attack_labels else scored.iloc[0:0]
+                    st.dataframe(flagged, use_container_width=True, height=340)
+                    st.download_button(
+                        "Download scored CSV",
+                        scored.to_csv(index=False).encode("utf-8"),
+                        file_name=f"nids_predictions_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                        mime="text/csv",
+                    )
+            except Exception as exc:
+                st.error(f"Prediction failed: {exc}")
+                push_event("error", "Prediction failed", str(exc))
         else:
             st.info("Upload a CSV file to score with the selected PKL model.")
 
@@ -1197,11 +1548,33 @@ with tabs[7]:
             default_row = pd.DataFrame([{column: 0.0 for column in feature_columns}])
             edited = st.data_editor(default_row, use_container_width=True, num_rows="fixed", height=300)
             if st.button("Score custom row", type="primary"):
-                scored_row = predict_dataframe(model_package, edited)
-                label = scored_row.loc[0, "Predicted_Label"]
-                traffic_type = scored_row.loc[0, "Traffic_Type"]
-                if traffic_type == "Attack":
-                    st.error(f"Predicted label: {label}")
-                else:
-                    st.success(f"Predicted label: {label}")
-                st.dataframe(scored_row, use_container_width=True)
+                try:
+                    scored_row = predict_dataframe(model_package, edited)
+                    label = scored_row.loc[0, "Predicted_Label"]
+                    traffic_type = scored_row.loc[0, "Traffic_Type"]
+                    if traffic_type == "Attack":
+                        st.error(f"Predicted label: {label}")
+                        push_event("warning", "Custom row flagged", f"Predicted label: {label}")
+                        render_event_card("Custom row flagged", f"Predicted label: {label}", "warning")
+                    else:
+                        st.success(f"Predicted label: {label}")
+                        push_event("success", "Custom row scored", f"Predicted label: {label}")
+                        render_event_card("Custom row scored", f"Predicted label: {label}", "success")
+                    st.dataframe(scored_row, use_container_width=True)
+                except Exception as exc:
+                    st.error(f"Custom scoring failed: {exc}")
+                    push_event("error", "Custom scoring failed", str(exc))
+
+
+with tabs[8]:
+    st.subheader("Dashboard event center")
+    render_event_card(
+        "Click event and error monitor",
+        "This panel records important dashboard actions: refresh, train start, train stop, prediction, custom scoring, validation errors, and failures.",
+        "info",
+    )
+    render_recent_events(limit=30)
+    if st.button("Clear event log"):
+        st.session_state["ui_events"] = []
+        push_event("info", "Event log cleared", "Recent dashboard events were removed.")
+        st.rerun()
